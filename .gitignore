@@ -3,3 +3,4 @@ venv/
 video/
 runs/
 image/
+.env
