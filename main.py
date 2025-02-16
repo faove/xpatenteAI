@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 import os
 import cv2
-# import ollama
+from dotenv import load_dotenv
 from ultralytics import YOLO
 # import numpy as np
 from google import genai
@@ -25,8 +25,16 @@ async def search_plate(image_path: str, confidence: float = 0.5):
         raise HTTPException(status_code=404, detail=f"La imagen no existe en la ruta: {image_path}")
 
     try:
+        # Cargar las variables desde .env
+        load_dotenv()
 
-        client = genai.Client(api_key="${GEMINI_API_KEY}")
+        # Obtener la clave de la variable de entorno
+        api_key = os.getenv("GEMINI_API_KEY")
+
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY no está configurada en .env")
+
+        client = genai.Client(api_key=api_key)
         # Leer la imagen
         image = cv2.imread(image_path)
         
@@ -62,7 +70,7 @@ async def search_plate(image_path: str, confidence: float = 0.5):
                 model="gemini-2.0-flash",
                 contents=["Extrae solo los caracteres alfanuméricos de la matrícula en esta imagen", image])
             
-            print(response.text)
+            # print(response.text)
 
             plate_text = response.text
 
