@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile
 import os
+from models.DetectionPlate import DetectionPlate
 import cv2
 from dotenv import load_dotenv
 from ultralytics import YOLO
-# import numpy as np
+import numpy as np
 from google import genai
 from google.genai import types
 
@@ -18,38 +19,36 @@ def status():
     return {"status": "running"}
 
 @app.post('/detection_plate')
-async def search_plate(image_path: str, confidence: float = 0.5):
-    
-
-    if not os.path.exists(image_path):
-        raise HTTPException(status_code=404, detail=f"La imagen no existe en la ruta: {image_path}")
-
+async def search_plate(file: UploadFile = File(...), confidence: float = 0.5):
     try:
+        # Leer la imagen en memoria
+        contents = await file.read()
+        image_np = np.frombuffer(contents, np.uint8)
+        image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
+
         # Cargar las variables desde .env
         load_dotenv()
 
         # Obtener la clave de la variable de entorno
         api_key = os.getenv("GEMINI_API_KEY")
-
+        # print('api_key::::::::::::::::::::::: ',api_key)
+        # return {"api_key": api_key}
         if not api_key:
             raise ValueError("GEMINI_API_KEY no está configurada en .env")
-
-        client = genai.Client(api_key=api_key)
+        
         # Leer la imagen
-        image = cv2.imread(image_path)
-        
-        
+        # image = cv2.imread(image_path)
         if image is None:
             raise HTTPException(status_code=400, detail="No se pudo leer la imagen. Verifique que el formato sea válido.")
 
         # Detección de placas con YOLO
-        results = model.predict(source=image_path, conf=confidence)
+        results = model.predict(source=image, conf=confidence)
         
         if len(results[0].boxes) == 0:
             return {"error": "No se detectó ninguna placa"}
 
         detected_plates = []
-        # print('result::::::::::::::::::::::: ',results[0].boxes)
+        
         for box in results[0].boxes:
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
 
@@ -66,20 +65,17 @@ async def search_plate(image_path: str, confidence: float = 0.5):
             # Leer la imagen
             image = PIL.Image.open("temp_plate.jpg")
             # model Gemini 2 Vision
+            client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
                 model="gemini-2.0-flash",
                 contents=["Extrae solo los caracteres alfanuméricos de la matrícula en esta imagen", image])
             
-            # print(response.text)
 
             plate_text = response.text
+            detected_plates.append({"plate": plate_text})
 
-            detected_plates.append({
-                "box": [x1, y1, x2, y2],
-                "plate_text": plate_text
-            })
+        return {"results": detected_plates}
 
-        return {"detected_plates": detected_plates}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el procesamiento de la imagen: {str(e)}")
